@@ -1,0 +1,11 @@
+{
+  "name": "RadioPlus",
+  "short_name": "RadioPlus",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#071229",
+  "theme_color": "#0b84ff",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+  ]
+}

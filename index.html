@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>RadioPlus — Modern Radio PWA</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0b84ff" />
+  <meta name="mobile-web-app-capable" content="yes">
+  <style>
+    /* ---------- Base ---------- */
+    :root{
+      --bg:#071229; --card:#071829; --muted:#9fb3c8; --accent:#0b84ff;
+      --glass: rgba(255,255,255,0.03);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue";
+      background: linear-gradient(180deg,#031428,#071229 60%);
+      color:#eaf6ff; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+      display:flex; align-items:flex-start; justify-content:center; padding:20px;
+    }
+    .app{width:100%; max-width:1100px;}
+    header{display:flex; align-items:center; gap:14px; margin-bottom:18px}
+    header img{width:56px;height:56px;border-radius:12px; background:var(--glass); padding:8px}
+    header h1{margin:0;font-size:20px}
+    .layout{display:grid; grid-template-columns: 1fr 360px; gap:18px}
+    @media (max-width:900px){ .layout{grid-template-columns:1fr} }
+
+    /* ---------- Station grid ---------- */
+    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:var(--radius); padding:16px; box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+    .grid{display:grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap:12px}
+    .tile{
+      position:relative; overflow:hidden; border-radius:12px; cursor:pointer;
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+      border:1px solid rgba(255,255,255,0.03); padding:12px; display:flex; gap:12px; align-items:center;
+      transition: transform .18s cubic-bezier(.2,.9,.2,1), box-shadow .18s;
+    }
+    .tile:hover{ transform: translateY(-8px); box-shadow: 0 18px 44px rgba(0,0,0,0.5); }
+    .tile.active{ outline: 2px solid rgba(11,132,255,0.14); transform: translateY(-10px) scale(1.01); }
+    .tile img{width:72px;height:72px;border-radius:10px; object-fit:cover; flex:0 0 72px }
+    .meta h3{margin:0;font-size:15px}
+    .meta p{margin:6px 0 0;font-size:12px;color:var(--muted);word-break:break-all}
+
+    .play-icon{position:absolute; right:10px; bottom:10px; background:rgba(11,132,255,0.12); color:var(--accent); padding:8px;border-radius:8px; font-weight:700; font-size:13px}
+
+    /* ---------- Right panel (player) ---------- */
+    .player { display:flex; flex-direction:column; gap:12px; }
+    .now { display:flex; gap:12px; align-items:center; }
+    .now img{width:96px;height:96px;border-radius:12px; object-fit:cover}
+    .now .info { flex:1 }
+    .big { font-size:18px; font-weight:700 }
+    .small { color:var(--muted); font-size:13px }
+
+    .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+    .btn { background:linear-gradient(90deg,var(--accent), #0877d1); padding:12px 14px; border-radius:12px; border:none; color:#042533; font-weight:700; cursor:pointer; box-shadow:0 6px 18px rgba(11,132,255,0.12) }
+    .btn.alt { background:transparent;border:1px solid rgba(255,255,255,0.06); color:var(--muted); box-shadow:none }
+    .btn.pause { background:linear-gradient(90deg,#ef4444,#dc2626); color:#fff }
+
+    .row { display:flex; gap:10px; align-items:center }
+    input[type=range]{ width:160px }
+
+    .footer { font-size:12px; color:var(--muted) }
+
+    /* favorites heart */
+    .heart { cursor:pointer; font-size:20px; color:rgba(255,255,255,0.6) }
+    .heart.active { color:#ff6b6b; filter:drop-shadow(0 6px 18px rgba(255,107,107,0.18)) }
+
+    /* small responsive fixes */
+    @media (max-width:520px){
+      .now img{width:64px;height:64px}
+      input[type=range]{width:120px}
+    }
+  </style>
+
+  <!-- hls.js for HLS streams -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.4/dist/hls.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <img src="icon-192.png" alt="logo">
+      <div>
+        <h1>RadioPlus</h1>
+        <div class="small">Modern player • PWA-ready • Background play</div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- left: stations -->
+      <section class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="small">Stations</div>
+          <div>
+            <button id="themeBtn" class="btn alt" title="Toggle theme">Theme</button>
+          </div>
+        </div>
+
+        <div id="stationGrid" class="grid"></div>
+        <div style="margin-top:12px" class="footer">Tip: Install the app (Add to Home screen) for best background behavior on Android.</div>
+      </section>
+
+      <!-- right: player -->
+      <aside class="panel player">
+        <div class="now">
+          <img id="nowArt" src="icon-192.png" alt="art">
+          <div class="info">
+            <div id="nowTitle" class="big">Not playing</div>
+            <div id="nowSub" class="small">Select a station</div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="playBtn" class="btn" disabled>Play</button>
+          <button id="stopBtn" class="btn alt" disabled>Stop</button>
+          <div class="row" style="align-items:center">
+            <label for="volume" class="small" style="width:60px">Volume</label>
+            <input id="volume" type="range" min="0" max="1" step="0.01">
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="favBtn" class="heart" title="Favorite">♡</div>
+            <button id="shareBtn" class="btn alt">Share</button>
+          </div>
+        </div>
+
+        <div style="margin-top:8px">
+          <div class="small">Status: <span id="status">Idle</span></div>
+        </div>
+
+      </aside>
+    </div>
+  </div>
+
+  <!-- Audio element -->
+  <audio id="audio" crossorigin="anonymous"></audio>
+
+  <script>
+    /* ========== CONFIG ========== */
+    const STATIONS = [
+      { id: "hello", name: "Hello FM", url: "https://listen.openstream.co/4428/audio", img: "https://raw.githubusercontent.com/pdeepakcwa/logos/main/hellofm.jpg" },
+      { id: "mirchi", name: "Radio Mirchi", url: "https://listen.openstream.co/4543/audio", img: "https://raw.githubusercontent.com/pdeepakcwa/logos/main/radiomirchi.jpg" },
+      { id: "suryan", name: "Suryan FM", url: "https://listen.openstream.co/6714/audio", img: "https://raw.githubusercontent.com/pdeepakcwa/logos/main/suryanfm.jpg" },
+      { id: "city", name: "Radio City", url: "https://listen.openstream.co/4426/audio", img: "https://raw.githubusercontent.com/pdeepakcwa/logos/main/radiocity.jpg" },
+      { id: "aha", name: "Aha FM", url: "https://radio.theanetworks.com.lk:8000/ahafm.mp3", img: "https://raw.githubusercontent.com/pdeepakcwa/logos/main/aha.jpg" },
+      { id: "big", name: "Big FM", url: "https://radios.crabdance.com:8002/4", img: "https://raw.githubusercontent.com/pdeepakcwa/logos/main/bigfmtamil.jpg" }
+    ];
+
+    /* ========== Elements ========== */
+    const grid = document.getElementById('stationGrid');
+    const audio = document.getElementById('audio');
+    const playBtn = document.getElementById('playBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusEl = document.getElementById('status');
+    const volumeEl = document.getElementById('volume');
+    const nowTitle = document.getElementById('nowTitle');
+    const nowSub = document.getElementById('nowSub');
+    const nowArt = document.getElementById('nowArt');
+    const favBtn = document.getElementById('favBtn');
+    const shareBtn = document.getElementById('shareBtn');
+    const themeBtn = document.getElementById('themeBtn');
+
+    /* ========== State ========== */
+    let current = JSON.parse(localStorage.getItem('rp_current') || 'null');
+    let favorites = JSON.parse(localStorage.getItem('rp_favs') || '[]');
+    let hls = null;
+    let isPlaying = false;
+    let reconnectTimer = null;
+
+    /* ========== Helpers ========== */
+    function saveState(){
+      localStorage.setItem('rp_current', JSON.stringify(current));
+      localStorage.setItem('rp_favs', JSON.stringify(favorites));
+      localStorage.setItem('rp_volume', audio.volume);
+    }
+
+    function setStatus(s){ statusEl.textContent = s; }
+
+    function createTile(st){
+      const el = document.createElement('div');
+      el.className = 'tile';
+      el.id = 'tile-' + st.id;
+      el.innerHTML = `
+        <img src="${st.img}" alt="${st.name}">
+        <div class="meta">
+          <h3>${st.name}</h3>
+          <p>${st.url}</p>
+        </div>
+        <div class="play-icon">▶</div>
+      `;
+      el.addEventListener('click', ()=> selectStation(st.id));
+      return el;
+    }
+
+    function renderStations(){
+      grid.innerHTML = '';
+      STATIONS.forEach(s => grid.appendChild(createTile(s)));
+      // mark favorite tiles
+      favorites.forEach(id => {
+        const t = document.getElementById('tile-'+id);
+        if(t) t.querySelector('.play-icon').textContent = '★';
+      });
+      highlightCurrent();
+    }
+
+    function highlightCurrent(){
+      document.querySelectorAll('.tile').forEach(t => t.classList.remove('active'));
+      if(current){
+        const tile = document.getElementById('tile-'+current.id);
+        if(tile) tile.classList.add('active');
+        nowTitle.textContent = current.name;
+        nowSub.textContent = current.url;
+        nowArt.src = current.img || 'icon-192.png';
+        favBtn.classList.toggle('active', favorites.includes(current.id));
+        favBtn.textContent = favorites.includes(current.id) ? '❤' : '♡';
+      } else {
+        nowTitle.textContent = 'Not playing';
+        nowSub.textContent = 'Select a station';
+        nowArt.src = 'icon-192.png';
+        favBtn.classList.remove('active');
+        favBtn.textContent = '♡';
+      }
+    }
+
+    /* ========== Playback ========== */
+    async function selectStation(id){
+      const st = STATIONS.find(s=>s.id===id);
+      if(!st) return;
+      if(current && current.id === id && isPlaying){
+        // toggle pause
+        stopPlayback();
+        return;
+      }
+      current = st;
+      saveState();
+      highlightCurrent();
+      await startPlayback();
+    }
+
+    async function startPlayback(){
+      if(!current) return;
+      setStatus('Connecting...');
+      // destroy existing hls
+      if(hls){ try{ hls.destroy(); }catch(e){} hls=null; }
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+
+      const isHls = current.url.endsWith('.m3u8') || current.url.includes('.m3u8');
+      try{
+        if(isHls && window.Hls && Hls.isSupported()){
+          hls = new Hls();
+          hls.loadSource(current.url);
+          hls.attachMedia(audio);
+          hls.on(Hls.Events.ERROR, function(event, data) {
+            console.warn('HLS error', data);
+            if(data.fatal) setStatus('Stream error');
+          });
+        } else {
+          audio.src = current.url;
+        }
+        // ensure user interaction requirement satisfied
+        await audio.play();
+        isPlaying = true;
+        playBtn.textContent = 'Pause';
+        playBtn.classList.remove('btn'); playBtn.classList.add('btn','pause'); // style tweak
+        stopBtn.disabled = false;
+        setStatus('Playing');
+        setupMediaSession();
+        clearReconnect();
+      }catch(err){
+        console.error('play fail', err);
+        setStatus('Playback failed');
+        scheduleReconnect();
+      }
+    }
+
+    function stopPlayback(){
+      if(hls){ try{ hls.destroy(); }catch(e){} hls=null; }
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      isPlaying = false;
+      playBtn.textContent = 'Play';
+      stopBtn.disabled = true;
+      setStatus('Paused');
+      saveState();
+    }
+
+    playBtn.addEventListener('click', ()=> {
+      if(isPlaying) stopPlayback(); else startPlayback();
+    });
+    stopBtn.addEventListener('click', stopPlayback);
+
+    audio.addEventListener('playing', ()=> { isPlaying = true; setStatus('Playing'); });
+    audio.addEventListener('waiting', ()=> setStatus('Buffering...'));
+    audio.addEventListener('ended', ()=> { isPlaying = false; setStatus('Ended'); playBtn.textContent='Play'; });
+    audio.addEventListener('error', ()=> { setStatus('Error'); scheduleReconnect(); });
+
+    /* reconnect logic */
+    function scheduleReconnect(){
+      clearReconnect();
+      reconnectTimer = setTimeout(()=> {
+        setStatus('Reconnecting...');
+        startPlayback();
+      }, 5000);
+    }
+    function clearReconnect(){ if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; } }
+
+    /* volume */
+    volumeEl.value = parseFloat(localStorage.getItem('rp_volume') || 1);
+    audio.volume = parseFloat(volumeEl.value);
+    volumeEl.addEventListener('input', ()=> {
+      audio.volume = parseFloat(volumeEl.value);
+      localStorage.setItem('rp_volume', audio.volume);
+    });
+
+    /* favorites */
+    favBtn.addEventListener('click', ()=> {
+      if(!current) return;
+      if(favorites.includes(current.id)){
+        favorites = favorites.filter(x=>x!==current.id);
+      } else {
+        favorites.push(current.id);
+      }
+      saveState(); highlightCurrent();
+    });
+
+    /* share */
+    shareBtn.addEventListener('click', ()=> {
+      if(!current) { alert('Select a station first'); return; }
+      const text = `${current.name} — ${current.url}`;
+      if(navigator.share){
+        navigator.share({ title: current.name, text, url: current.url }).catch(()=>{});
+      } else {
+        prompt('Copy station URL', text);
+      }
+    });
+
+    /* media session */
+    function setupMediaSession(){
+      if(!('mediaSession' in navigator)) return;
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: current?.name || 'RadioPlus',
+        artist: 'Live stream',
+        artwork: [{ src: current?.img || 'icon-192.png', sizes: '192x192', type: 'image/jpeg' }]
+      });
+      navigator.mediaSession.setActionHandler('play', ()=> startPlayback());
+      navigator.mediaSession.setActionHandler('pause', ()=> stopPlayback());
+      navigator.mediaSession.setActionHandler('stop', ()=> stopPlayback());
+    }
+
+    /* theme */
+    themeBtn.addEventListener('click', ()=>{
+      const currently = document.documentElement.style.getPropertyValue('--bg');
+      if(currently === '#071229'){ // toggle to light-ish theme
+        document.documentElement.style.setProperty('--bg','#f3f7fb');
+        document.documentElement.style.setProperty('--card','#ffffff');
+        document.documentElement.style.setProperty('--muted','#334155');
+        document.documentElement.style.setProperty('--accent','#0b84ff');
+      } else {
+        document.documentElement.style.setProperty('--bg','#071229');
+        document.documentElement.style.setProperty('--card','#071829');
+        document.documentElement.style.setProperty('--muted','#9fb3c8');
+        document.documentElement.style.setProperty('--accent','#0b84ff');
+      }
+    });
+
+    /* render & init */
+    renderStations();
+    if(current){
+      // try to find current in STATIONS (in case persisted)
+      const match = STATIONS.find(s=>s.id===current.id);
+      if(match) current = match;
+      highlightCurrent();
+    }
+    // auto-select first station if none selected
+    if(!current && STATIONS.length) {
+      current = STATIONS[0];
+      highlightCurrent();
+    }
+
+    // register service worker
+    if('serviceWorker' in navigator){
+      window.addEventListener('load', ()=> {
+        navigator.serviceWorker.register('sw.js').then(()=> console.log('sw registered')).catch(e=>console.warn('sw failed', e));
+      });
+    }
+
+    // prevent accidental close while playing
+    window.addEventListener('beforeunload', (e)=> {
+      if(isPlaying){
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+  </script>
+</body>
+</html>
